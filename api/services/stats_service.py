@@ -7,6 +7,7 @@ from django.utils import timezone
 from api.models import Flashcard, UserProgress, Category, LanguagePair
 
 MIN_REVIEWS_FOR_DIFFICULTY = 3
+DIFFICULTY_AGAIN_RATE_THRESHOLD = 0.40
 
 
 def _accuracy_and_total(progress_qs):
@@ -167,11 +168,13 @@ def get_difficult_flashcards(
     limit=20,
 ):
     """
-    Returns actual Flashcard objects ordered by their "again" rate.
+    Returns actual flashcards that are genuinely difficult for the user.
 
-    These cards form a dynamic "Tricky Words" study deck.
-    The deck is calculated from review history and is not stored
-    as a separate database entity.
+    A card is considered difficult when:
+    - it has enough review history;
+    - at least 40% of its reviews were rated "again".
+
+    The deck is dynamic and is not stored in the database.
     """
 
     flashcards_qs = Flashcard.objects.filter(
@@ -197,7 +200,9 @@ def get_difficult_flashcards(
             ),
             again_count=Count(
                 "progress",
-                filter=Q(progress__result="again"),
+                filter=Q(
+                    progress__result="again"
+                ),
                 distinct=True,
             ),
         )
@@ -209,6 +214,9 @@ def get_difficult_flashcards(
                 F("again_count") * 1.0 / F("progress_count"),
                 output_field=FloatField(),
             )
+        )
+        .filter(
+            again_rate__gte=DIFFICULTY_AGAIN_RATE_THRESHOLD,
         )
         .order_by(
             "-again_rate",
@@ -224,34 +232,23 @@ def get_difficult_cards(user, language_pair_id=None, category_id=None, limit=10)
     Cards sorted by their "again" rate, restricted to cards with enough
     review history to be meaningful (MIN_REVIEWS_FOR_DIFFICULTY).
     """
-    flashcards_qs = Flashcard.objects.filter(user=user)
+    flashcards = get_difficult_flashcards(
+        user=user,
+        language_pair_id=language_pair_id,
+        category_id=category_id,
+        limit=limit,
+    )
 
-    if category_id is not None:
-        flashcards_qs = flashcards_qs.filter(categories__id=category_id)
-    elif language_pair_id is not None:
-        flashcards_qs = flashcards_qs.filter(categories__language_pair_id=language_pair_id)
-
-    # distinct=True on both Count()s is required: filtering by
-    # language_pair joins through `categories`, and a card can belong to
-    # more than one category within the same pair, duplicating its
-    # progress rows once per matching category otherwise.
-    flashcards_qs = flashcards_qs.annotate(
-        progress_count=Count("progress", distinct=True),
-        again_count=Count("progress", filter=Q(progress__result="again"), distinct=True),
-    ).filter(progress_count__gte=MIN_REVIEWS_FOR_DIFFICULTY)
-
-    scored = [
+    return [
         {
             "flashcard_id": card.id,
             "text": card.text,
             "reviews": card.progress_count,
-            "again_rate": round(card.again_count / card.progress_count, 4),
+            "again_rate": round(card.again_rate, 4),
             "ease_factor": card.ease_factor,
         }
-        for card in flashcards_qs
+        for card in flashcards
     ]
-    scored.sort(key=lambda c: c["again_rate"], reverse=True)
-    return scored[:limit]
 
 
 def get_accuracy_trend(user, language_pair_id=None, days=7):

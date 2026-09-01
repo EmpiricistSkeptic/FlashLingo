@@ -12,6 +12,7 @@ from rest_framework.decorators import action
 from rest_framework.throttling import UserRateThrottle
 from django.shortcuts import get_object_or_404
 from django.db.models import Count
+from django.db import transaction
 
 from django.utils import timezone
 
@@ -44,6 +45,7 @@ from .serializers import (
 
 from api.services.deepseek_service import DeepSeekService
 from .services.spaced_repetition import review_flashcard
+from .services.stats_service import get_difficult_flashcards
 
 logger = logging.getLogger(__name__)
 
@@ -179,26 +181,33 @@ class FlashcardViewSet(
         request_serializer = FlashcardReviewRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
         result = request_serializer.validated_data["result"]
-        UserProgress.objects.create(
-            user=request.user,
-            flashcard=flashcard,
-            result=result,
-            interval_before=flashcard.interval,
-            ease_factor_before=flashcard.ease_factor,
-            status_before=flashcard.status,
-        )
- 
-        review_flashcard(flashcard, result)
- 
-        response_data = FlashcardStateSerializer(flashcard).data
-        response_data["result"] = result
-        return Response(response_data, status=status.HTTP_200_OK)
+        with transaction.atomic():
+            UserProgress.objects.create(
+                user=request.user,
+                flashcard=flashcard,
+                result=result,
+                interval_before=flashcard.interval,
+                ease_factor_before=flashcard.ease_factor,
+                status_before=flashcard.status,
+            )
+    
+            review_flashcard(flashcard, result)
+    
+            response_data = FlashcardStateSerializer(flashcard).data
+            response_data["result"] = result
+            return Response(response_data, status=status.HTTP_200_OK)
  
     @action(detail=False, methods=["get"], url_path="study")
     def study(self, request):
         category_id = request.query_params.get("category")
         card_type = request.query_params.get("type", "due")
-        new_limit = int(request.query_params.get("new_limit", 20))
+        try:
+            new_limit = int(request.query_params.get("new_limit", 20))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "new_limit must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if not category_id:
             return Response(
@@ -246,6 +255,53 @@ class FlashcardViewSet(
                 flashcards,
                 many=True,
             ).data
+        )
+
+    @action(
+    detail=False,
+    methods=["get"],
+    url_path="difficult",
+    )
+    def difficult(self, request):
+        language_pair_id = request.query_params.get("language_pair")
+        try:
+            limit = int(request.query_params.get("limit", 20))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "limit must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not language_pair_id:
+            return Response(
+                {"detail": "Language pair is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if limit < 1:
+            return Response(
+                {"detail": "Limit must be greater than 0."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        language_pair = get_object_or_404(
+            LanguagePair,
+            id=language_pair_id,
+            user=request.user,
+        )
+
+        flashcards = get_difficult_flashcards(
+            user=request.user,
+            language_pair_id=language_pair.id,
+            limit=min(limit, 50),
+        )
+
+        return Response(
+            FlashcardSerializer(
+                flashcards,
+                many=True,
+            ).data,
+            status=status.HTTP_200_OK,
         )
 
 

@@ -45,32 +45,23 @@ class DeepSeekService:
         try:
             data = json.loads(content)
         except json.JSONDecodeError as e:
-            logger.warning(
-                "DeepSeek returned invalid JSON: %s",
-                raw_response,
-            )
+            logger.warning("DeepSeek returned invalid JSON")
             raise ValueError("Invalid JSON returned by DeepSeek") from e
 
         if not isinstance(data, dict):
-            logger.warning(
-                "DeepSeek returned non-dict JSON: %r",
-                data,
-            )
+            logger.warning("DeepSeek returned non-dict JSON")
             raise ValueError("DeepSeek response must be a JSON object")
 
-        # text
         text = data.get("text")
 
         if not isinstance(text, str) or not text.strip():
             raise ValueError("Invalid 'text' field")
 
-        # corrected_text
         corrected_text = data.get("corrected_text")
 
         if corrected_text is not None and not isinstance(corrected_text, str):
             raise ValueError("Invalid 'corrected_text' field")
 
-        # translations
         translations = data.get("translations")
 
         if not isinstance(translations, list):
@@ -79,7 +70,6 @@ class DeepSeekService:
         if not all(isinstance(item, str) and item.strip() for item in translations):
             raise ValueError("'translations' must contain only non-empty strings")
 
-        # examples
         examples = data.get("examples")
 
         if not isinstance(examples, list):
@@ -131,7 +121,12 @@ class DeepSeekService:
                     "type": "disabled"
                 }
             }
-            logger.info(f"Payload: {data}")
+            logger.info(
+                "DeepSeek request: user_id=%s, language_pair_id=%s, text_length=%s",
+                language_pair.user_id,
+                language_pair.id,
+                len(text),
+            )
 
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
@@ -145,7 +140,11 @@ class DeepSeekService:
             )
             response.raise_for_status()
             raw_response = response.json()
-            logger.info(f"Raw resulf from AI: {raw_response}")
+            logger.info(
+                "DeepSeek response received: user_id=%s, language_pair_id=%s",
+                language_pair.user_id,
+                language_pair.id,
+            )
             return self._parse_response(raw_response)
         except requests.exceptions.Timeout:
             logger.error(
@@ -156,11 +155,19 @@ class DeepSeekService:
             raise
                     
         except requests.exceptions.RequestException as e:
-            logger.exception(f"HTTP error during AI generation: {e}")
+            logger.exception(
+                "HTTP error during DeepSeek request: user_id=%s, language_pair_id=%s",
+                language_pair.user_id,
+                language_pair.id,
+            )
             raise
                     
         except (KeyError, IndexError, TypeError, json.JSONDecodeError) as e:
-            logger.exception(f"Unexpected response format from DeepSeek API: {e}")
+            logger.exception(
+                "Unexpected DeepSeek response format: user_id=%s, language_pair_id=%s",
+                language_pair.user_id,
+                language_pair.id,
+            )
             raise 
                     
 
