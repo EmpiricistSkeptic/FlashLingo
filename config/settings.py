@@ -61,7 +61,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": "50/hour",
         "user": "1000/hour",
-        "translation": "100/hour",
+        "translation": "200/hour",
     },
 }
 
