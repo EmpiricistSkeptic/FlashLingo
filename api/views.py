@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from django.contrib.auth import get_user_model
 
-from .throttles import TranslationThrottle
+from .throttles import TranslationThrottle, AuthThrottle
 
 User = get_user_model()
 
@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 class RegisterAPIView(GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = RegisterSerializer
+    throttle_classes = [AuthThrottle]
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -72,6 +73,7 @@ class RegisterAPIView(GenericAPIView):
 class LoginAPIView(GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = LoginSerializer
+    throttle_classes = [AuthThrottle]
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

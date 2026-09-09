@@ -62,6 +62,7 @@ REST_FRAMEWORK = {
         "anon": "50/hour",
         "user": "1000/hour",
         "translation": "200/hour",
+        "auth": "5/min",
     },
 }
 
