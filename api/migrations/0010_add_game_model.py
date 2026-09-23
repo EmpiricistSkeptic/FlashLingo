@@ -24,12 +24,12 @@ class Migration(migrations.Migration):
                 (
                     "game_type",
                     models.CharField(
+                        max_length=12,
                         choices=[
                             ("typing", "Typing"),
                             ("sentence", "Sentence"),
                             ("translation", "Translation"),
                         ],
-                        max_length=12,
                     ),
                 ),
                 (
@@ -45,8 +45,8 @@ class Migration(migrations.Migration):
                 (
                     "score",
                     models.FloatField(
-                        blank=True,
                         null=True,
+                        blank=True,
                     ),
                 ),
                 (
@@ -56,19 +56,19 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "flashcard",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE,
-                        related_name="game_attempts",
-                        to="api.flashcard",
-                    ),
-                ),
-                (
                     "user",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="game_attempts",
                         to="api.user",
+                    ),
+                ),
+                (
+                    "flashcard",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="game_attempts",
+                        to="api.flashcard",
                     ),
                 ),
             ],
@@ -80,6 +80,7 @@ class Migration(migrations.Migration):
                             "flashcard",
                             "game_type",
                         ],
+                        name="gameattempt_user_flashcard_type_idx",
                     ),
                 ],
             },
