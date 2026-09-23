@@ -105,5 +105,66 @@ class UserProgress(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.flashcard.text} - {self.result}"
 
+class GameAttempt(models.Model):
+    GAME_TYPE_CHOICES = (
+        ("typing", "Typing"),
+        ("sentence", "Sentence"),
+        ("translation", "Translation"),
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="game_attempts",
+    )
+
+    flashcard = models.ForeignKey(
+        Flashcard,
+        on_delete=models.CASCADE,
+        related_name="game_attempts",
+    )
+
+    game_type = models.CharField(
+        max_length=12,
+        choices=GAME_TYPE_CHOICES,
+    )
+
+    is_correct = models.BooleanField()
+
+    user_answer = models.TextField(
+        max_length=1000,
+    )
+
+    # Typing: None.
+    # AI games: 0.0 - 1.0.
+    score = models.FloatField(
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=[
+                    "user",
+                    "flashcard",
+                    "game_type",
+                ]
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.user.username} - "
+            f"{self.game_type} - "
+            f"{self.flashcard.text} - "
+            f"{self.is_correct}"
+        )
+
+
 
 

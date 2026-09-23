@@ -8,7 +8,8 @@ from .views import (
     CategoryViewSet,
     TranslationPreviewAPIView,
     FlashcardViewSet,
-    LanguagePairViewSet
+    LanguagePairViewSet,
+    GameViewSet
 )
 from .stats_views import(
     AccuracyTrendView,
@@ -24,6 +25,7 @@ router.register(r"language-pairs", LanguagePairViewSet, basename="language-pair"
 router.register(r"category", CategoryViewSet, basename="category")
 router.register(r"flashcards", FlashcardViewSet, basename="flashcard")
 router.register(r"progress", ProgressViewSet, basename="progress")
+router.register(r"games", GameViewSet, basename="games")
 
 
 

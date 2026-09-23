@@ -20,6 +20,12 @@ LANGUAGE_NAMES = {
             "ja": "japanese",
         }
 
+class AIServiceError(Exception):
+    """
+    Raised when DeepSeek cannot provide a valid result.
+    """
+    pass
+
 class DeepSeekService:
     def __init__(self):
         self.api_key = getattr(settings, "DEEPSEEK_API_KEY", None)
@@ -94,6 +100,134 @@ class DeepSeekService:
                 for item in examples
             ],
         }
+
+    def generate_json(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            max_tokens: int = 800,
+            temperature: float = 0.4,
+    ) -> dict:
+
+        if not self.api_key:
+            raise AIServiceError("DeepSeek api key is not configured.")
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt,
+                }
+            ],
+            "response_format": {
+                "type": "json_object",
+            },
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "thinking": {
+                "type": "disabled",
+            },
+        }
+
+        try:
+            response = self.session.post(
+                self.api_url,
+                json=payload,
+                headers={
+                    "Authorization": (
+                        f"Bearer {self.api_key}"
+                    ),
+                    "Content-Type": (
+                        "application/json"
+                    ),
+                },
+                timeout=(5, 30),
+            )
+
+            response.raise_for_status()
+        except requests.exceptions.Timeout as exc:
+            logger.warning(
+                "DeepSeek game request timed out"
+            )
+
+            raise AIServiceError(
+                "DeepSeek request timed out."
+            ) from exc
+
+        except requests.exceptions.RequestException as exc:
+            logger.warning(
+                "DeepSeek game request failed: %s",
+                exc,
+            )
+
+            raise AIServiceError(
+                "Could not reach the AI provider."
+            ) from exc
+
+        try:
+            raw_response = response.json()
+            content = raw_response["choices"][0]["message"]["content"]
+        except (
+            KeyError,
+            IndexError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            logger.warning(
+                "Unexpected DeepSeek response "
+                "shape: %s",
+                exc,
+            )
+
+            raise AIServiceError(
+                "The AI provider returned "
+                "an unexpected response."
+            ) from exc
+
+        if not content:
+            raise AIServiceError(
+                "The AI provider returned empty content."
+            )
+
+        content = content.strip()
+
+        # Defensive handling if the model returns
+        # a fenced JSON block despite JSON mode.
+        if content.startswith("```"):
+            content = (
+                content
+                .replace("```json", "")
+                .replace("```", "")
+                .strip()
+            )
+
+        try:
+            data = json.loads(content)
+
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "DeepSeek returned invalid game JSON: %r",
+                content,
+            )
+
+            raise AIServiceError(
+                "The AI provider returned invalid JSON."
+            ) from exc
+
+        if not isinstance(data, dict):
+            raise AIServiceError(
+                "The AI provider returned "
+                "an invalid JSON object."
+            )
+
+        return data
+
 
 
     def build_system_prompt(self, language_pair) -> str:

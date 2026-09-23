@@ -167,3 +167,102 @@ class FlashcardStateSerializer(serializers.ModelSerializer):
             "next_review",
         ]
         read_only_fields = fields
+
+
+class TypingEvaluateSerializer(serializers.Serializer):
+    flashcard_id = serializers.IntegerField(
+        min_value=1,
+    )
+
+    answer = serializers.CharField(
+        max_length=500,
+        allow_blank=False,
+    )
+
+    def validate_answer(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Answer cannot be blank."
+            )
+
+        return value
+
+
+class GameGenerateSerializer(serializers.Serializer):
+    flashcard_id = serializers.IntegerField(
+        min_value=1,
+    )
+
+
+class SentenceEvaluateSerializer(serializers.Serializer):
+    flashcard_id = serializers.IntegerField(
+        min_value=1,
+    )
+
+    context = serializers.CharField(
+        max_length=1000,
+        allow_blank=False,
+    )
+
+    answer = serializers.CharField(
+        max_length=1000,
+        allow_blank=False,
+    )
+
+    def validate_context(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Context cannot be blank."
+            )
+
+        return value
+
+    def validate_answer(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Answer cannot be blank."
+            )
+
+        return value
+
+
+class TranslationEvaluateSerializer(serializers.Serializer):
+    flashcard_id = serializers.IntegerField(
+        min_value=1,
+    )
+
+    source_sentence = serializers.CharField(
+        max_length=1000,
+        allow_blank=False,
+    )
+
+    answer = serializers.CharField(
+        max_length=1000,
+        allow_blank=False,
+    )
+
+    def validate_source_sentence(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Source sentence cannot be blank."
+            )
+
+        return value
+
+    def validate_answer(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Answer cannot be blank."
+            )
+
+        return value

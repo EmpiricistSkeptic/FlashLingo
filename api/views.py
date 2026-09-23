@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from django.contrib.auth import get_user_model
 
-from .throttles import TranslationThrottle, AuthThrottle
+from .throttles import TranslationThrottle, AuthThrottle, AIGameThrottle
 
 User = get_user_model()
 
@@ -40,10 +40,26 @@ from .serializers import (
     UserSerializer,
     LanguagePairSerializer,
     FlashcardReviewRequestSerializer,
-    FlashcardStateSerializer
+    FlashcardStateSerializer,
+    GameGenerateSerializer,
+    SentenceEvaluateSerializer,
+    TranslationEvaluateSerializer,
+    TypingEvaluateSerializer
 )
 
-from api.services.deepseek_service import DeepSeekService
+
+from api.services.deepseek_service import DeepSeekService, AIServiceError
+from .services.games.sentence import (
+    evaluate_sentence_challenge,
+    generate_sentence_challenge,
+)
+from .services.games.typing import (
+    evaluate_typing,
+)
+from .services.games.translation import (
+    evaluate_translation_challenge,
+    generate_translation_challenge,
+)
 from .services.spaced_repetition import review_flashcard
 from .services.stats_service import get_difficult_flashcards
 
@@ -321,5 +337,339 @@ class TranslationPreviewAPIView(APIView):
         result = service.translate(validated_text, language_pair)
         return Response(TranslationResponseSerializer(result).data, status=status.HTTP_200_OK)
         
+class GameViewSet(viewsets.GenericViewSet):
+    """
+    Thin HTTP layer.
 
-        
+    Responsibilities:
+    - validate request;
+    - call game service;
+    - return HTTP response.
+
+    No:
+    - SRS;
+    - game algorithms;
+    - DeepSeek calls;
+    - prompt strings.
+    """
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get_throttles(self):
+        if self.action in {
+            "sentence_generate",
+            "sentence_evaluate",
+            "translation_generate",
+            "translation_evaluate",
+        }:
+            return [
+                AIGameThrottle()
+            ]
+
+        return super().get_throttles()
+
+    # ============================================================
+    # TYPING
+    # ============================================================
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="typing/evaluate",
+    )
+    def typing_evaluate(
+        self,
+        request,
+    ):
+        serializer = (
+            TypingEvaluateSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        attempt = evaluate_typing(
+            user=request.user,
+            flashcard_id=(
+                serializer.validated_data[
+                    "flashcard_id"
+                ]
+            ),
+            answer=(
+                serializer.validated_data[
+                    "answer"
+                ]
+            ),
+        )
+
+        return Response(
+            {
+                "game_type": "typing",
+
+                "flashcard_id": (
+                    attempt.flashcard_id
+                ),
+
+                "is_correct": (
+                    attempt.is_correct
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    # ============================================================
+    # SENTENCE GENERATE
+    # ============================================================
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="sentence/generate",
+    )
+    def sentence_generate(
+        self,
+        request,
+    ):
+        serializer = (
+            GameGenerateSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        try:
+            challenge = (
+                generate_sentence_challenge(
+                    user=request.user,
+                    flashcard_id=(
+                        serializer.validated_data[
+                            "flashcard_id"
+                        ]
+                    ),
+                )
+            )
+
+        except AIServiceError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_502_BAD_GATEWAY
+                ),
+            )
+
+        except ValueError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_400_BAD_REQUEST
+                ),
+            )
+
+        return Response(
+            challenge,
+            status=status.HTTP_200_OK,
+        )
+
+    # ============================================================
+    # SENTENCE EVALUATE
+    # ============================================================
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="sentence/evaluate",
+    )
+    def sentence_evaluate(
+        self,
+        request,
+    ):
+        serializer = (
+            SentenceEvaluateSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        data = serializer.validated_data
+
+        try:
+            _attempt, result = (
+                evaluate_sentence_challenge(
+                    user=request.user,
+                    flashcard_id=(
+                        data["flashcard_id"]
+                    ),
+                    context=data["context"],
+                    answer=data["answer"],
+                )
+            )
+
+        except AIServiceError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_502_BAD_GATEWAY
+                ),
+            )
+
+        except ValueError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_400_BAD_REQUEST
+                ),
+            )
+
+        return Response(
+            {
+                "game_type": "sentence",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    # ============================================================
+    # TRANSLATION GENERATE
+    # ============================================================
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="translation/generate",
+    )
+    def translation_generate(
+        self,
+        request,
+    ):
+        serializer = (
+            GameGenerateSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        try:
+            challenge = (
+                generate_translation_challenge(
+                    user=request.user,
+                    flashcard_id=(
+                        serializer.validated_data[
+                            "flashcard_id"
+                        ]
+                    ),
+                )
+            )
+
+        except AIServiceError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_502_BAD_GATEWAY
+                ),
+            )
+
+        except ValueError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_400_BAD_REQUEST
+                ),
+            )
+
+        return Response(
+            challenge,
+            status=status.HTTP_200_OK,
+        )
+
+    # ============================================================
+    # TRANSLATION EVALUATE
+    # ============================================================
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="translation/evaluate",
+    )
+    def translation_evaluate(
+        self,
+        request,
+    ):
+        serializer = (
+            TranslationEvaluateSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        data = serializer.validated_data
+
+        try:
+            _attempt, result = (
+                evaluate_translation_challenge(
+                    user=request.user,
+                    flashcard_id=(
+                        data["flashcard_id"]
+                    ),
+                    source_sentence=(
+                        data["source_sentence"]
+                    ),
+                    answer=data["answer"],
+                )
+            )
+
+        except AIServiceError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_502_BAD_GATEWAY
+                ),
+            )
+
+        except ValueError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_400_BAD_REQUEST
+                ),
+            )
+
+        return Response(
+            {
+                "game_type": "translation",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )

@@ -63,6 +63,7 @@ REST_FRAMEWORK = {
         "user": "1000/hour",
         "translation": "200/hour",
         "auth": "5/min",
+        "ai_games": "20/minute",
     },
 }
 
