@@ -82,15 +82,9 @@ def get_game_overview(user):
         ["average"]
     )
 
-    success_rate = 0.0
-
-    if answered_attempts:
-        success_rate = round(
-            successful_attempts
-            / answered_attempts
-            * 100,
-            1,
-        )
+    # Was a manually-inlined round(correct/answered*100, 1) block
+    # duplicating _success_rate's logic — now just calls it.
+    success_rate = _success_rate(attempts)
 
     give_up_rate = 0.0
 
@@ -138,13 +132,12 @@ def get_game_modes(user):
             is_correct=True,
         ).count()
 
-        success_rate = 0.0
-
-        if answered:
-            success_rate = round(
-                correct / answered * 100,
-                1,
-            )
+        # Was a manually-inlined round(correct/answered*100, 1)
+        # block duplicating _success_rate's logic — now just calls
+        # it, same as get_game_overview above.
+        success_rate = _success_rate(
+            mode_attempts
+        )
 
         average_ai_score = None
 
