@@ -189,6 +189,11 @@ class TypingEvaluateSerializer(serializers.Serializer):
 
         return value
 
+class TypingGiveUpSerializer(serializers.Serializer):
+    flashcard_id = serializers.IntegerField(
+        min_value=1,
+    )
+
 
 class GameGenerateSerializer(serializers.Serializer):
     flashcard_id = serializers.IntegerField(
@@ -231,6 +236,25 @@ class SentenceEvaluateSerializer(serializers.Serializer):
 
         return value
 
+class SentenceGiveUpSerializer(serializers.Serializer):
+    flashcard_id = serializers.IntegerField(
+        min_value=1,
+    )
+ 
+    context = serializers.CharField(
+        max_length=1000,
+        allow_blank=False,
+    )
+ 
+    def validate_context(self, value):
+        value = value.strip()
+ 
+        if not value:
+            raise serializers.ValidationError(
+                "Context cannot be blank."
+            )
+ 
+        return value
 
 class TranslationEvaluateSerializer(serializers.Serializer):
     flashcard_id = serializers.IntegerField(
@@ -265,4 +289,24 @@ class TranslationEvaluateSerializer(serializers.Serializer):
                 "Answer cannot be blank."
             )
 
+        return value
+
+class TranslationGiveUpSerializer(serializers.Serializer):
+    flashcard_id = serializers.IntegerField(
+        min_value=1,
+    )
+ 
+    source_sentence = serializers.CharField(
+        max_length=1000,
+        allow_blank=False,
+    )
+ 
+    def validate_source_sentence(self, value):
+        value = value.strip()
+ 
+        if not value:
+            raise serializers.ValidationError(
+                "Source sentence cannot be blank."
+            )
+ 
         return value

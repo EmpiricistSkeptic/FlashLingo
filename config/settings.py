@@ -105,11 +105,15 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set")
 
+DATABASE_SSL_REQUIRE = (
+    os.getenv("DATABASE_SSL_REQUIRE", "true").lower() == "true"
+)
+
 DATABASES = {
     "default": dj_database_url.parse(
         DATABASE_URL,
         conn_max_age=0,
-        ssl_require=True,
+        ssl_require=DATABASE_SSL_REQUIRE,
     )
 }
 

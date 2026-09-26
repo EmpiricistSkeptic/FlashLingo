@@ -85,6 +85,10 @@ def _validate_evaluation_result(
         "feedback"
     )
 
+    explanation = result.get(
+        "explanation"
+    )
+
     correction = result.get(
         "correction"
     )
@@ -126,6 +130,15 @@ def _validate_evaluation_result(
             "AI returned invalid feedback."
         )
 
+    if not isinstance(
+        explanation,
+        str,
+    ) or not explanation.strip():
+
+        raise AIServiceError(
+            "AI returned invalid explanation."
+        )
+
     if (
         correction is not None
         and not isinstance(
@@ -147,11 +160,52 @@ def _validate_evaluation_result(
         "is_correct": is_correct,
         "score": score,
         "feedback": feedback.strip(),
+        "explanation": explanation.strip(),
         "correction": (
             correction.strip()
             if isinstance(correction, str)
             else None
         ),
+    }
+
+
+def _validate_example_result(
+    result: dict,
+) -> dict:
+
+    example_answer = result.get(
+        "example_answer"
+    )
+
+    explanation = result.get(
+        "explanation"
+    )
+
+    if (
+        not isinstance(
+            example_answer,
+            str,
+        )
+        or not example_answer.strip()
+    ):
+        raise AIServiceError(
+            "AI returned invalid example answer."
+        )
+
+    if (
+        not isinstance(
+            explanation,
+            str,
+        )
+        or not explanation.strip()
+    ):
+        raise AIServiceError(
+            "AI returned invalid example explanation."
+        )
+
+    return {
+        "example_answer": example_answer.strip(),
+        "explanation": explanation.strip(),
     }
 
 
@@ -239,7 +293,7 @@ def evaluate_sentence_challenge(
         flashcard
     )
 
-    learning_language, _native_language = (
+    learning_language, native_language = (
         language_names(language_pair)
     )
 
@@ -256,6 +310,7 @@ def evaluate_sentence_challenge(
             context=context,
             user_sentence=answer,
             learning_language=learning_language,
+            native_language=native_language,
         )
     )
 
@@ -264,7 +319,7 @@ def evaluate_sentence_challenge(
     result = ai.generate_json(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        max_tokens=400,
+        max_tokens=500,
         temperature=0.2,
     )
 
@@ -286,3 +341,82 @@ def evaluate_sentence_challenge(
     )
 
     return attempt, evaluation
+
+
+def give_up_sentence_challenge(
+    *,
+    user,
+    flashcard_id: int,
+    context: str,
+) -> tuple[GameAttempt, dict]:
+    """
+    Logs a failed attempt and asks the AI for a useful example
+    sentence with a short teacher-style explanation.
+    """
+
+    flashcard = get_object_or_404(
+        Flashcard,
+        id=flashcard_id,
+        user=user,
+    )
+
+    language_pair = get_language_pair_for(
+        flashcard
+    )
+
+    learning_language, native_language = (
+        language_names(language_pair)
+    )
+
+    target_word = flashcard.text.strip()
+
+    if not target_word:
+        raise ValueError(
+            "Flashcard has no target word."
+        )
+
+    system_prompt, user_prompt = (
+        prompts.sentence_example_prompt(
+            target_word=target_word,
+            context=context,
+            learning_language=learning_language,
+            native_language=native_language,
+        )
+    )
+
+    ai = DeepSeekService()
+
+    result = ai.generate_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        max_tokens=300,
+        temperature=0.4,
+    )
+
+    example = _validate_example_result(
+        result
+    )
+
+    attempt = GameAttempt.objects.create(
+        user=user,
+        flashcard=flashcard,
+        game_type="sentence",
+        is_correct=False,
+        user_answer="",
+        score=None,
+        gave_up=True,
+    )
+
+    evaluation = {
+        "is_correct": False,
+        "score": 0.0,
+        "feedback": (
+            "You skipped this one — here's "
+            "a useful example to learn from."
+        ),
+        "explanation": example["explanation"],
+        "correction": example["example_answer"],
+    }
+
+    return attempt, evaluation
+

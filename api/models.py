@@ -135,11 +135,30 @@ class GameAttempt(models.Model):
         max_length=1000,
     )
 
+    gave_up = models.BooleanField(
+        default=False,
+    )
+
     # Typing: None.
     # AI games: 0.0 - 1.0.
     score = models.FloatField(
         null=True,
         blank=True,
+    )
+
+    feedback = models.TextField(
+        blank=True,
+        default="", 
+    )
+
+    explanation = models.TextField(
+        blank=True, 
+        default="",
+    )
+
+    correction = models.TextField(
+        blank=True, 
+        default="", 
     )
 
     created_at = models.DateTimeField(

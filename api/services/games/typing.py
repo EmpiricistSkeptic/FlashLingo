@@ -55,3 +55,29 @@ def evaluate_typing(
         user_answer=answer,
         score=None,
     )
+
+def give_up_typing(
+    *,
+    user,
+    flashcard_id: int,
+) -> GameAttempt:
+    """
+    Logs a "show answer" action as a failed attempt. No comparison
+    is made — the user never submitted an answer to evaluate.
+    """
+
+    flashcard = get_object_or_404(
+        Flashcard,
+        id=flashcard_id,
+        user=user,
+    )
+
+    return GameAttempt.objects.create(
+        user=user,
+        flashcard=flashcard,
+        game_type="typing",
+        is_correct=False,
+        user_answer="",
+        gave_up=True,
+        score=None,
+    )

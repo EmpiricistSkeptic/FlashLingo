@@ -43,8 +43,11 @@ from .serializers import (
     FlashcardStateSerializer,
     GameGenerateSerializer,
     SentenceEvaluateSerializer,
+    SentenceGiveUpSerializer,
     TranslationEvaluateSerializer,
-    TypingEvaluateSerializer
+    TranslationGiveUpSerializer,
+    TypingEvaluateSerializer,
+    TypingGiveUpSerializer
 )
 
 
@@ -52,16 +55,27 @@ from api.services.deepseek_service import DeepSeekService, AIServiceError
 from .services.games.sentence import (
     evaluate_sentence_challenge,
     generate_sentence_challenge,
+    give_up_sentence_challenge,
 )
 from .services.games.typing import (
     evaluate_typing,
+    give_up_typing,
 )
 from .services.games.translation import (
     evaluate_translation_challenge,
     generate_translation_challenge,
+    give_up_translation_challenge,
 )
 from .services.spaced_repetition import review_flashcard
 from .services.stats_service import get_difficult_flashcards
+
+from .services.game_stats import (
+    get_game_overview, 
+    get_game_modes, 
+    get_game_skills, 
+    get_game_trend, 
+    get_recent_game_activity, 
+)
 
 logger = logging.getLogger(__name__)
 
@@ -361,8 +375,10 @@ class GameViewSet(viewsets.GenericViewSet):
         if self.action in {
             "sentence_generate",
             "sentence_evaluate",
+            "sentence_give_up",
             "translation_generate",
             "translation_evaluate",
+            "translation_give_up",
         }:
             return [
                 AIGameThrottle()
@@ -403,6 +419,49 @@ class GameViewSet(viewsets.GenericViewSet):
             answer=(
                 serializer.validated_data[
                     "answer"
+                ]
+            ),
+        )
+
+        return Response(
+            {
+                "game_type": "typing",
+
+                "flashcard_id": (
+                    attempt.flashcard_id
+                ),
+
+                "is_correct": (
+                    attempt.is_correct
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="typing/give-up",
+    )
+    def typing_give_up(
+        self,
+        request,
+    ):
+        serializer = (
+            TypingGiveUpSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        attempt = give_up_typing(
+            user=request.user,
+            flashcard_id=(
+                serializer.validated_data[
+                    "flashcard_id"
                 ]
             ),
         )
@@ -547,6 +606,66 @@ class GameViewSet(viewsets.GenericViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="sentence/give-up",
+    )
+    def sentence_give_up(
+        self,
+        request,
+    ):
+        serializer = (
+            SentenceGiveUpSerializer(
+                data=request.data
+            )
+        )
+ 
+        serializer.is_valid(
+            raise_exception=True
+        )
+ 
+        data = serializer.validated_data
+ 
+        try:
+            _attempt, result = (
+                give_up_sentence_challenge(
+                    user=request.user,
+                    flashcard_id=(
+                        data["flashcard_id"]
+                    ),
+                    context=data["context"],
+                )
+            )
+ 
+        except AIServiceError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_502_BAD_GATEWAY
+                ),
+            )
+ 
+        except ValueError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_400_BAD_REQUEST
+                ),
+            )
+ 
+        return Response(
+            {
+                "game_type": "sentence",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     # ============================================================
     # TRANSLATION GENERATE
     # ============================================================
@@ -671,5 +790,162 @@ class GameViewSet(viewsets.GenericViewSet):
                 "game_type": "translation",
                 **result,
             },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="translation/give-up",
+    )
+    def translation_give_up(
+        self,
+        request,
+    ):
+        serializer = (
+            TranslationGiveUpSerializer(
+                data=request.data
+            )
+        )
+ 
+        serializer.is_valid(
+            raise_exception=True
+        )
+ 
+        data = serializer.validated_data
+ 
+        try:
+            _attempt, result = (
+                give_up_translation_challenge(
+                    user=request.user,
+                    flashcard_id=(
+                        data["flashcard_id"]
+                    ),
+                    source_sentence=(
+                        data["source_sentence"]
+                    ),
+                )
+            )
+ 
+        except AIServiceError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_502_BAD_GATEWAY
+                ),
+            )
+ 
+        except ValueError as exc:
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=(
+                    status.HTTP_400_BAD_REQUEST
+                ),
+            )
+ 
+        return Response(
+            {
+                "game_type": "translation",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+class GameStatsViewSet(viewsets.GenericViewSet):
+    """
+    Read-only HTTP layer for game statistics.
+
+    Responsibilities:
+    - authenticate the user;
+    - call statistics services;
+    - return HTTP responses.
+
+    No:
+    - game logic;
+    - SRS logic;
+    - AI calls.
+    """
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="overview",
+    )
+    def overview(self, request):
+        return Response(
+            get_game_overview(
+                request.user
+            ),
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="modes",
+    )
+    def modes(self, request):
+        return Response(
+            get_game_modes(
+                request.user
+            ),
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="skills",
+    )
+    def skills(self, request):
+        return Response(
+            get_game_skills(
+                request.user
+            ),
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="trend",
+    )
+    def trend(self, request):
+        return Response(
+            get_game_trend(
+                request.user
+            ),
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="recent",
+    )
+    def recent(self, request):
+        raw_limit = request.query_params.get(
+            "limit",
+            "8",
+        )
+
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError):
+            limit = 8
+
+        return Response(
+            get_recent_game_activity(
+                request.user,
+                limit=limit,
+            ),
             status=status.HTTP_200_OK,
         )
