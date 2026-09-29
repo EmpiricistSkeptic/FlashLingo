@@ -11,14 +11,30 @@ from .prompts import BASE_PROMPT
 logger = logging.getLogger(__name__)
 
 LANGUAGE_NAMES = {
-            "ru": "russian",
-            "en": "english",
-            "es": "spanish",
-            "fr": "french",
-            "de": "german",
-            "zh": "chinese",
-            "ja": "japanese",
-        }
+    "ru": "russian",
+    "en": "english",
+    "es": "spanish",
+    "fr": "french",
+    "de": "german",
+    "it": "italian",
+    "pt": "portuguese",
+    "id": "indonesian",
+    "ja": "japanese",
+    "ko": "korean",
+    "zh": "chinese",
+    "nl": "dutch",
+    "pl": "polish",
+    "sv": "swedish",
+    "no": "norwegian",
+    "da": "danish",
+    "fi": "finnish",
+    "el": "greek",
+    "tr": "turkish",
+    "uk": "ukrainian",
+    "ro": "romanian",
+    "cs": "czech",
+    "hu": "hungarian",
+}
 
 class AIServiceError(Exception):
     """

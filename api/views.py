@@ -47,7 +47,10 @@ from .serializers import (
     TranslationEvaluateSerializer,
     TranslationGiveUpSerializer,
     TypingEvaluateSerializer,
-    TypingGiveUpSerializer
+    TypingGiveUpSerializer,
+    GameRecentQuerySerializer,
+    GameTrendQuerySerializer,
+    GameStatsQuerySerializer,
 )
 
 
@@ -75,6 +78,7 @@ from .services.game_stats import (
     get_game_skills, 
     get_game_trend, 
     get_recent_game_activity, 
+    get_game_language_comparison,
 )
 
 logger = logging.getLogger(__name__)
@@ -335,6 +339,74 @@ class FlashcardViewSet(
             ).data,
             status=status.HTTP_200_OK,
         )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="duplicates",
+        )
+    def duplicates(self, request):
+        text = (request.query_params.get("text") or "").strip()
+        language_pair_id = request.query_params.get("language_pair")
+        exclude_id = request.query_params.get("exclude")
+        
+        if not text:
+            return Response(
+                {"detail": "Text is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        if not language_pair_id:
+            return Response(
+                {"detail": "Language pair is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            language_pair_id = int(language_pair_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Invalid language pair."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        language_pair = get_object_or_404(
+            LanguagePair,
+            id=language_pair_id,
+            user=request.user,
+        )
+        
+        qs = Flashcard.objects.filter(
+            user=request.user,
+            categories__language_pair=language_pair,
+            text__iexact=text,
+        ).distinct().prefetch_related("categories")
+        
+        if exclude_id:
+            try:
+                exclude_id = int(exclude_id)
+                qs = qs.exclude(id=exclude_id)
+            except (TypeError, ValueError):
+                pass
+        
+        data = [
+            {
+                "id": card.id,
+                "text": card.text,
+                "translations": card.translations,
+                "categories": [
+                    {
+                        "id": category.id,
+                        "name": category.name,
+                    }
+                    for category in card.categories.all()
+                    if category.language_pair_id == language_pair.id
+                ],
+            }
+            for card in qs
+        ]
+        
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class TranslationPreviewAPIView(APIView):
@@ -861,6 +933,7 @@ class GameStatsViewSet(viewsets.GenericViewSet):
 
     Responsibilities:
     - authenticate the user;
+    - validate query params;
     - call statistics services;
     - return HTTP responses.
 
@@ -880,8 +953,36 @@ class GameStatsViewSet(viewsets.GenericViewSet):
         url_path="overview",
     )
     def overview(self, request):
+        serializer = (
+            GameStatsQuerySerializer(
+                data=request.query_params
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
         return Response(
             get_game_overview(
+                request.user,
+                language_pair_id=(
+                    serializer.validated_data.get(
+                        "language_pair"
+                    )
+                ),
+            ),
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="languages",
+    )
+    def languages(self, request):
+        return Response(
+            get_game_language_comparison(
                 request.user
             ),
             status=status.HTTP_200_OK,
@@ -893,9 +994,24 @@ class GameStatsViewSet(viewsets.GenericViewSet):
         url_path="modes",
     )
     def modes(self, request):
+        serializer = (
+            GameStatsQuerySerializer(
+                data=request.query_params
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
         return Response(
             get_game_modes(
-                request.user
+                request.user,
+                language_pair_id=(
+                    serializer.validated_data.get(
+                        "language_pair"
+                    )
+                ),
             ),
             status=status.HTTP_200_OK,
         )
@@ -906,9 +1022,24 @@ class GameStatsViewSet(viewsets.GenericViewSet):
         url_path="skills",
     )
     def skills(self, request):
+        serializer = (
+            GameStatsQuerySerializer(
+                data=request.query_params
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
         return Response(
             get_game_skills(
-                request.user
+                request.user,
+                language_pair_id=(
+                    serializer.validated_data.get(
+                        "language_pair"
+                    )
+                ),
             ),
             status=status.HTTP_200_OK,
         )
@@ -919,9 +1050,29 @@ class GameStatsViewSet(viewsets.GenericViewSet):
         url_path="trend",
     )
     def trend(self, request):
+        serializer = (
+            GameTrendQuerySerializer(
+                data=request.query_params
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
         return Response(
             get_game_trend(
-                request.user
+                request.user,
+                days=(
+                    serializer.validated_data[
+                        "days"
+                    ]
+                ),
+                language_pair_id=(
+                    serializer.validated_data.get(
+                        "language_pair"
+                    )
+                ),
             ),
             status=status.HTTP_200_OK,
         )
@@ -932,20 +1083,29 @@ class GameStatsViewSet(viewsets.GenericViewSet):
         url_path="recent",
     )
     def recent(self, request):
-        raw_limit = request.query_params.get(
-            "limit",
-            "8",
+        serializer = (
+            GameRecentQuerySerializer(
+                data=request.query_params
+            )
         )
 
-        try:
-            limit = int(raw_limit)
-        except (TypeError, ValueError):
-            limit = 8
+        serializer.is_valid(
+            raise_exception=True
+        )
 
         return Response(
             get_recent_game_activity(
                 request.user,
-                limit=limit,
+                limit=(
+                    serializer.validated_data[
+                        "limit"
+                    ]
+                ),
+                language_pair_id=(
+                    serializer.validated_data.get(
+                        "language_pair"
+                    )
+                ),
             ),
             status=status.HTTP_200_OK,
         )

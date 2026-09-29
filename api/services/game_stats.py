@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from django.db.models import Avg
 from django.utils import timezone
 
-from ..models import GameAttempt
+from ..models import GameAttempt, LanguagePair
 
 
 GAME_TYPES = (
@@ -49,10 +49,36 @@ def _success_rate(attempts) -> float:
     )
 
 
-def get_game_overview(user):
-    attempts = GameAttempt.objects.filter(
-        user=user,
-    )
+def _filter_by_language_pair(
+    attempts,
+    language_pair_id,
+):
+    """
+    Flashcard has no direct FK to LanguagePair — the link goes through
+    the categories M2M (Flashcard.categories -> Category.language_pair).
+    A single flashcard can sit in more than one Category of the same
+    pair, so this join can duplicate GameAttempt rows the same way it
+    does for UserProgress in the Learning stats service — .distinct()
+    guards against that, same reasoning as _accuracy_and_total there.
+    """
+
+    if language_pair_id is None:
+        return attempts
+
+    return attempts.filter(
+        flashcard__categories__language_pair_id=(
+            language_pair_id
+        ),
+    ).distinct()
+
+
+def _overview_stats(attempts) -> dict:
+    """
+    Shared by get_game_overview (all attempts for the user) and
+    get_game_language_comparison (attempts scoped to one pair) — same
+    six numbers, computed from whatever GameAttempt queryset is handed
+    in.
+    """
 
     total_attempts = attempts.count()
 
@@ -82,8 +108,6 @@ def get_game_overview(user):
         ["average"]
     )
 
-    # Was a manually-inlined round(correct/answered*100, 1) block
-    # duplicating _success_rate's logic — now just calls it.
     success_rate = _success_rate(attempts)
 
     give_up_rate = 0.0
@@ -109,9 +133,66 @@ def get_game_overview(user):
     }
 
 
-def get_game_modes(user):
-    attempts = GameAttempt.objects.filter(
+def get_game_overview(
+    user,
+    language_pair_id=None,
+):
+    attempts = _filter_by_language_pair(
+        GameAttempt.objects.filter(
+            user=user,
+        ),
+        language_pair_id,
+    )
+
+    return _overview_stats(attempts)
+
+
+def get_game_language_comparison(user):
+    """
+    One row per language pair the user has, mirroring
+    get_language_comparison in the Learning stats service. Loops per
+    pair rather than one giant annotated query — same reasoning as the
+    Learning-side version: pair counts are small per user, so this
+    stays simple and readable.
+    """
+
+    results = []
+
+    for pair in LanguagePair.objects.filter(
         user=user,
+    ):
+        attempts = (
+            GameAttempt.objects
+            .filter(user=user)
+            .filter(
+                flashcard__categories__language_pair=pair,
+            )
+            .distinct()
+        )
+
+        stats = _overview_stats(attempts)
+
+        results.append(
+            {
+                "language_pair_id": pair.id,
+                "native": pair.native_language,
+                "learning": pair.learning_language,
+                **stats,
+            }
+        )
+
+    return results
+
+
+def get_game_modes(
+    user,
+    language_pair_id=None,
+):
+    attempts = _filter_by_language_pair(
+        GameAttempt.objects.filter(
+            user=user,
+        ),
+        language_pair_id,
     )
 
     result = []
@@ -132,9 +213,6 @@ def get_game_modes(user):
             is_correct=True,
         ).count()
 
-        # Was a manually-inlined round(correct/answered*100, 1)
-        # block duplicating _success_rate's logic — now just calls
-        # it, same as get_game_overview above.
         success_rate = _success_rate(
             mode_attempts
         )
@@ -172,10 +250,16 @@ def get_game_modes(user):
     return result
 
 
-def get_game_skills(user):
+def get_game_skills(
+    user,
+    language_pair_id=None,
+):
     mode_stats = {
         item["game_type"]: item
-        for item in get_game_modes(user)
+        for item in get_game_modes(
+            user,
+            language_pair_id=language_pair_id,
+        )
     }
 
     typing_stats = mode_stats["typing"]
@@ -219,6 +303,7 @@ def get_game_skills(user):
 def get_game_trend(
     user,
     days: int = 14,
+    language_pair_id=None,
 ):
     if days < 1:
         days = 1
@@ -236,12 +321,16 @@ def get_game_trend(
         )
     )
 
-    attempts = (
-        GameAttempt.objects
-        .filter(
+    attempts = _filter_by_language_pair(
+        GameAttempt.objects.filter(
             user=user,
             created_at__gte=start_datetime,
-        )
+        ),
+        language_pair_id,
+    )
+
+    attempts = (
+        attempts
         .only(
             "game_type",
             "is_correct",
@@ -334,15 +423,23 @@ def get_game_trend(
 def get_recent_game_activity(
     user,
     limit: int = 8,
+    language_pair_id=None,
 ):
     limit = max(
         1,
         min(limit, 50),
     )
 
+    attempts = _filter_by_language_pair(
+        GameAttempt.objects.filter(
+            user=user,
+        ),
+        language_pair_id,
+    )
+
     attempts = (
-        GameAttempt.objects
-        .filter(user=user)
+        attempts
+        .select_related("flashcard")
         .only(
             "id",
             "game_type",
@@ -351,6 +448,7 @@ def get_recent_game_activity(
             "score",
             "feedback",
             "created_at",
+            "flashcard__text",
         )
         .order_by("-created_at")[:limit]
     )
@@ -370,6 +468,9 @@ def get_recent_game_activity(
                 else None
             ),
             "feedback": attempt.feedback,
+            "flashcard_text": (
+                attempt.flashcard.text
+            ),
             "created_at": attempt.created_at.isoformat(),
         }
         for attempt in attempts

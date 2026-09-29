@@ -310,3 +310,43 @@ class TranslationGiveUpSerializer(serializers.Serializer):
             )
  
         return value
+
+
+class GameStatsQuerySerializer(serializers.Serializer):
+    """
+    Shared by overview/modes/skills — all three only ever need an
+    optional language pair scope, nothing else.
+    """
+
+    language_pair = serializers.IntegerField(
+        min_value=1,
+        required=False,
+    )
+
+
+class GameTrendQuerySerializer(serializers.Serializer):
+    days = serializers.IntegerField(
+        min_value=1,
+        max_value=90,
+        required=False,
+        default=14,
+    )
+
+    language_pair = serializers.IntegerField(
+        min_value=1,
+        required=False,
+    )
+
+
+class GameRecentQuerySerializer(serializers.Serializer):
+    limit = serializers.IntegerField(
+        min_value=1,
+        max_value=50,
+        required=False,
+        default=8,
+    )
+
+    language_pair = serializers.IntegerField(
+        min_value=1,
+        required=False,
+    )

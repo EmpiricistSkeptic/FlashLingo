@@ -168,6 +168,7 @@ def _validate_evaluation_result(
         ),
     }
 
+
 def _validate_example_result(
     result: dict,
 ) -> dict:
@@ -338,6 +339,8 @@ def evaluate_translation_challenge(
         result
     )
 
+    # Was missing feedback/explanation/correction here — same gap
+    # as the sentence-game service, same fix.
     attempt = GameAttempt.objects.create(
         user=user,
         flashcard=flashcard,
@@ -349,9 +352,20 @@ def evaluate_translation_challenge(
         score=evaluation[
             "score"
         ],
+        feedback=evaluation[
+            "feedback"
+        ],
+        explanation=evaluation[
+            "explanation"
+        ],
+        correction=(
+            evaluation["correction"]
+            or ""
+        ),
     )
 
     return attempt, evaluation
+
 
 def give_up_translation_challenge(
     *,
@@ -361,40 +375,41 @@ def give_up_translation_challenge(
 ) -> tuple[GameAttempt, dict]:
     """
     Logs a failed attempt (no answer was submitted) and asks the AI
-    for a single example translation, so the learner sees a correct
-    usage instead of hitting a dead end.
+    for a single example translation with a short teacher-style
+    explanation, so the learner sees a correct usage instead of
+    hitting a dead end.
     """
- 
+
     flashcard = get_object_or_404(
         Flashcard,
         id=flashcard_id,
         user=user,
     )
- 
+
     language_pair = get_language_pair_for(
         flashcard
     )
- 
+
     learning_language, native_language = (
         language_names(language_pair)
     )
- 
+
     translations = _clean_translations(
         flashcard
     )
- 
+
     if not translations:
         raise ValueError(
             "Flashcard has no valid translations."
         )
- 
+
     target_word = flashcard.text.strip()
- 
+
     if not target_word:
         raise ValueError(
             "Flashcard has no target word."
         )
- 
+
     system_prompt, user_prompt = (
         prompts.translation_example_prompt(
             source_sentence=source_sentence,
@@ -404,20 +419,35 @@ def give_up_translation_challenge(
             learning_language=learning_language,
         )
     )
- 
+
     ai = DeepSeekService()
- 
+
     result = ai.generate_json(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         max_tokens=300,
         temperature=0.4,
     )
- 
+
     example = _validate_example_result(
         result
     )
- 
+
+    # Built before GameAttempt.objects.create(...) now, same
+    # reordering fix as give_up_sentence_challenge.
+    evaluation = {
+        "is_correct": False,
+        # No evaluation happened (the learner never answered), so
+        # this is "no score" — not an AI-assigned zero.
+        "score": None,
+        "feedback": (
+            "You skipped this one — here's an "
+            "example to learn from."
+        ),
+        "explanation": example["explanation"],
+        "correction": example["example_answer"],
+    }
+
     attempt = GameAttempt.objects.create(
         user=user,
         flashcard=flashcard,
@@ -426,19 +456,9 @@ def give_up_translation_challenge(
         user_answer="",
         score=None,
         gave_up=True,
+        feedback=evaluation["feedback"],
+        explanation=evaluation["explanation"],
+        correction=evaluation["correction"],
     )
- 
-    evaluation = {
-        "is_correct": False,
-        "score": 0.0,
-        "feedback": (
-            "You skipped this one — here's an "
-            "example to learn from."
-        ),
-        "explanation": example["explanation"],
-        "correction": (
-            example["example_answer"]
-        ),
-    }
- 
+
     return attempt, evaluation

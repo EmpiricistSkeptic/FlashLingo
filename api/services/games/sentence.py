@@ -327,6 +327,10 @@ def evaluate_sentence_challenge(
         result
     )
 
+    # Was missing feedback/explanation/correction here — the
+    # evaluation dict already had them, they just never made it
+    # into the saved row, so this data was lost the moment the
+    # HTTP response was sent.
     attempt = GameAttempt.objects.create(
         user=user,
         flashcard=flashcard,
@@ -338,6 +342,16 @@ def evaluate_sentence_challenge(
         score=evaluation[
             "score"
         ],
+        feedback=evaluation[
+            "feedback"
+        ],
+        explanation=evaluation[
+            "explanation"
+        ],
+        correction=(
+            evaluation["correction"]
+            or ""
+        ),
     )
 
     return attempt, evaluation
@@ -397,19 +411,15 @@ def give_up_sentence_challenge(
         result
     )
 
-    attempt = GameAttempt.objects.create(
-        user=user,
-        flashcard=flashcard,
-        game_type="sentence",
-        is_correct=False,
-        user_answer="",
-        score=None,
-        gave_up=True,
-    )
-
+    # Built before GameAttempt.objects.create(...) now, specifically
+    # so the create() call below can actually persist it — it used
+    # to be built after, which meant it was constructed but had
+    # nowhere to go except the HTTP response.
     evaluation = {
         "is_correct": False,
-        "score": 0.0,
+        # No evaluation happened (the learner never answered), so
+        # this is "no score" — not an AI-assigned zero.
+        "score": None,
         "feedback": (
             "You skipped this one — here's "
             "a useful example to learn from."
@@ -418,5 +428,17 @@ def give_up_sentence_challenge(
         "correction": example["example_answer"],
     }
 
-    return attempt, evaluation
+    attempt = GameAttempt.objects.create(
+        user=user,
+        flashcard=flashcard,
+        game_type="sentence",
+        is_correct=False,
+        user_answer="",
+        score=None,
+        gave_up=True,
+        feedback=evaluation["feedback"],
+        explanation=evaluation["explanation"],
+        correction=evaluation["correction"],
+    )
 
+    return attempt, evaluation

@@ -11,6 +11,22 @@ LANGUAGE_CHOICES = [
     ("de", "German"),
     ("it", "Italian"),
     ("pt", "Portuguese"),
+    ("id", "Indonesian"),
+    ("ja", "Japanese"),
+    ("ko", "Korean"),
+    ("zh", "Chinese"),
+    ("nl", "Dutch"),
+    ("pl", "Polish"),
+    ("sv", "Swedish"),
+    ("no", "Norwegian"),
+    ("da", "Danish"),
+    ("fi", "Finnish"),
+    ("el", "Greek"),
+    ("tr", "Turkish"),
+    ("uk", "Ukrainian"),
+    ("ro", "Romanian"),
+    ("cs", "Czech"),
+    ("hu", "Hungarian"),
 ]
 
 class LanguagePair(models.Model):
